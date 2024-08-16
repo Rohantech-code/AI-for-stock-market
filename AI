@@ -1,0 +1,77 @@
+import numpy as np
+import pandas as pd
+import yfinance as yf
+from sklearn.preprocessing import MinMaxScaler
+from sklearn.metrics import mean_squared_error
+import matplotlib.pyplot as plt
+from keras.models import Sequential
+from keras.layers import Dense, LSTM
+
+# Parameters
+ticker = 'AAPL'  # Stock ticker symbol
+start_date = '2010-01-01'
+end_date = '2023-01-01'
+time_step = 60  # Number of days to look back
+
+# Load and prepare data
+data = yf.download(ticker, start=start_date, end=end_date)
+data = data[['Close']]
+data['Target'] = data['Close'].shift(-1)
+data = data[:-1]
+
+# Features and labels
+features = data[['Close']].values
+labels = data['Target'].values
+
+# Normalize features
+scaler = MinMaxScaler(feature_range=(0, 1))
+features = scaler.fit_transform(features)
+
+# Split into training and test sets
+split = int(len(features) * 0.8)
+X_train, X_test = features[:split], features[split:]
+y_train, y_test = labels[:split], labels[split:]
+
+# Reshape data for LSTM
+def create_dataset(X, y, time_step=1):
+    Xs, ys = [], []
+    for i in range(len(X) - time_step - 1):
+        Xs.append(X[i:(i + time_step), 0])
+        ys.append(y[i + time_step])
+    return np.array(Xs), np.array(ys)
+
+X_train, y_train = create_dataset(X_train, y_train, time_step)
+X_test, y_test = create_dataset(X_test, y_test, time_step)
+
+X_train = X_train.reshape(X_train.shape[0], X_train.shape[1], 1)
+X_test = X_test.reshape(X_test.shape[0], X_test.shape[1], 1)
+
+# Build and train the LSTM model
+model = Sequential()
+model.add(LSTM(units=50, return_sequences=True, input_shape=(time_step, 1)))
+model.add(LSTM(units=50))
+model.add(Dense(1))
+
+model.compile(optimizer='adam', loss='mean_squared_error')
+history = model.fit(X_train, y_train, epochs=50, batch_size=32, validation_split=0.1, verbose=1)
+
+# Predict on test set
+y_pred = model.predict(X_test)
+
+# Inverse transform predictions to original scale
+y_test = scaler.inverse_transform(y_test.reshape(-1, 1))
+y_pred = scaler.inverse_transform(y_pred)
+
+# Calculate performance
+mse = mean_squared_error(y_test, y_pred)
+print(f'Mean Squared Error: {mse}')
+
+# Plot results
+plt.figure(figsize=(14, 7))
+plt.plot(y_test, color='blue', label='Actual Stock Price')
+plt.plot(y_pred, color='red', label='Predicted Stock Price')
+plt.title(f'{ticker} Stock Price Prediction')
+plt.xlabel('Time')
+plt.ylabel('Stock Price')
+plt.legend()
+plt.show()
