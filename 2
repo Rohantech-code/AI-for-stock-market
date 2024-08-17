@@ -1,0 +1,61 @@
+import numpy as np
+import pandas as pd
+import yfinance as yf
+from sklearn.model_selection import train_test_split
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import classification_report, confusion_matrix
+import matplotlib.pyplot as plt
+
+# Fetch historical stock data
+def fetch_stock_data(ticker, start_date, end_date):
+    stock_data = yf.download(ticker, start=start_date, end=end_date)
+    return stock_data
+
+# Feature engineering
+def add_features(data):
+    data['Return'] = data['Close'].pct_change()
+    data['Moving_Avg_20'] = data['Close'].rolling(window=20).mean()
+    data['Volatility'] = data['Close'].rolling(window=20).std()
+    data['Price_Change'] = data['Close'].diff()
+    data.dropna(inplace=True)
+    return data
+
+# Prepare data
+def prepare_data(data):
+    features = ['Return', 'Moving_Avg_20', 'Volatility', 'Price_Change']
+    X = data[features]
+    y = (data['Price_Change'] > 0).astype(int)  # 1 if price increased, 0 otherwise
+    return X, y
+
+# Fetch and preprocess data
+ticker = 'AAPL'
+start_date = '2022-01-01'
+end_date = '2024-01-01'
+data = fetch_stock_data(ticker, start_date, end_date)
+data = add_features(data)
+X, y = prepare_data(data)
+
+# Split the data
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
+
+# Train the model
+model = RandomForestClassifier(n_estimators=100, random_state=42)
+model.fit(X_train, y_train)
+
+# Make predictions
+y_pred = model.predict(X_test)
+
+# Evaluate the model
+print("Confusion Matrix:")
+print(confusion_matrix(y_test, y_pred))
+print("\nClassification Report:")
+print(classification_report(y_test, y_pred))
+
+# Plot feature importances
+feature_importances = model.feature_importances_
+features = X.columns
+
+plt.barh(features, feature_importances)
+plt.xlabel('Feature Importance')
+plt.title('Feature Importances for Random Forest Classifier')
+plt.show()
